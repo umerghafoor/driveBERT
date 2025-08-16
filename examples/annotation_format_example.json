@@ -1,0 +1,112 @@
+{
+    "description": "Example annotation file format for custom action recognition dataset",
+    "dataset_info": {
+        "name": "Custom Action Dataset",
+        "version": "1.0",
+        "description": "Example dataset for action recognition",
+        "total_videos": 1000,
+        "total_classes": 10
+    },
+    "action_classes": [
+        "walking",
+        "running",
+        "jumping",
+        "sitting",
+        "standing",
+        "waving",
+        "clapping",
+        "dancing",
+        "eating",
+        "sleeping"
+    ],
+    "splits": {
+        "train": [
+            "video_001.mp4",
+            "video_002.mp4",
+            "video_003.mp4",
+            "video_005.mp4"
+        ],
+        "val": [
+            "video_004.mp4",
+            "video_006.mp4"
+        ],
+        "test": [
+            "video_007.mp4",
+            "video_008.mp4"
+        ]
+    },
+    "videos": [
+        {
+            "video_path": "video_001.mp4",
+            "action_class": "walking",
+            "action_id": 0,
+            "duration": 10.5,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "train"
+        },
+        {
+            "video_path": "video_002.mp4", 
+            "action_class": "running",
+            "action_id": 1,
+            "duration": 8.2,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "train"
+        },
+        {
+            "video_path": "video_003.mp4",
+            "action_class": "jumping", 
+            "action_id": 2,
+            "duration": 5.8,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "train"
+        },
+        {
+            "video_path": "video_004.mp4",
+            "action_class": "sitting",
+            "action_id": 3,
+            "duration": 12.1,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "val"
+        },
+        {
+            "video_path": "video_005.mp4",
+            "action_class": "standing",
+            "action_id": 4,
+            "duration": 6.3,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "train"
+        },
+        {
+            "video_path": "video_006.mp4",
+            "action_class": "waving",
+            "action_id": 5,
+            "duration": 7.9,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "val"
+        },
+        {
+            "video_path": "video_007.mp4",
+            "action_class": "clapping",
+            "action_id": 6,
+            "duration": 4.5,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "test"
+        },
+        {
+            "video_path": "video_008.mp4",
+            "action_class": "dancing",
+            "action_id": 7,
+            "duration": 15.2,
+            "fps": 30,
+            "resolution": [640, 480],
+            "split": "test"
+        }
+    ]
+}

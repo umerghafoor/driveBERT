@@ -1,0 +1,38 @@
+# Custom Action Recognition Finetune Configuration
+# Template for finetuning action recognition on custom datasets from pretrained MotionBERT
+
+# General  
+finetune: True  # Enable finetuning mode
+partial_train: null  # null to train all layers, or specify layers to freeze
+
+# Training Parameters
+epochs: 100  # Fewer epochs needed for finetuning
+batch_size: 32  # Batch size
+lr_backbone: 0.00005  # Lower learning rate for backbone when finetuning
+lr_head: 0.0001  # Higher learning rate for new classification head
+weight_decay: 0.01  # Weight decay
+lr_decay: 0.95  # More aggressive decay for finetuning
+
+# Model Architecture (should match pretrained model)
+model_version: class
+maxlen: 243
+dim_feat: 512
+mlp_ratio: 2
+depth: 5
+dim_rep: 512
+num_heads: 8
+att_fuse: True
+num_joints: 17
+hidden_dim: 2048
+dropout_ratio: 0.3  # Lower dropout for finetuning
+
+# Dataset Configuration
+dataset: custom_dataset  # Name of your dataset
+data_split: train_val  # Split naming convention
+clip_len: 243
+action_classes: 10  # REPLACE WITH YOUR NUMBER OF ACTION CLASSES
+
+# Data Augmentation (less aggressive for finetuning)
+random_move: True
+scale_range_train: [1, 2]  # Less aggressive scaling
+scale_range_test: [1, 1]  # No scaling for testing
