@@ -1,0 +1,38 @@
+# Driving Behavior Recognition Finetune Configuration
+# Specialized config for finetuning on driving behavior dataset
+
+# General  
+finetune: True  # Enable finetuning mode
+partial_train: null  # null to train all layers
+
+# Training Parameters (optimized for finetuning)
+epochs: 150  # Fewer epochs needed for finetuning driving behaviors
+batch_size: 16  # Batch size
+lr_backbone: 0.00003  # Very low learning rate for backbone when finetuning
+lr_head: 0.0002  # Higher learning rate for new classification head
+weight_decay: 0.005  # Lower weight decay for finetuning
+lr_decay: 0.96  # More aggressive decay for finetuning
+
+# Model Architecture (should match pretrained model)
+model_version: class
+maxlen: 243
+dim_feat: 512
+mlp_ratio: 2
+depth: 6  # Match training config
+dim_rep: 512
+num_heads: 8
+att_fuse: True
+num_joints: 17
+hidden_dim: 3072  # Match training config for 39 classes
+dropout_ratio: 0.3  # Lower dropout for finetuning
+
+# Dataset Configuration
+dataset: driving_behavior  # Name of your dataset
+data_split: train_val  # Split naming convention
+clip_len: 243
+action_classes: 39  # Number of driving behavior classes
+
+# Data Augmentation (minimal for finetuning to preserve learned representations)
+random_move: True
+scale_range_train: [1, 1.5]  # Very conservative scaling
+scale_range_test: [1, 1]  # No scaling for testing

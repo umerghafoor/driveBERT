@@ -1,0 +1,424 @@
+"""
+DrivenAct Dataset Converter for DriveBERT Action Recognition
+Converts DrivenAct dataset with pre-extracted OpenPose 3D keypoints and activity annotations
+"""
+
+import os
+import pandas as pd
+import numpy as np
+import pickle
+import json
+import argparse
+from tqdm import tqdm
+from collections import defaultdict
+import sys
+
+# Add the lib directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lib'))
+
+# DrivenAct activity mappings (based on actual CSV data)
+DRIVENACT_ACTIVITIES = {
+    'closing_door_outside': 0, 'opening_door_outside': 1, 'entering_car': 2,
+    'closing_door_inside': 3, 'fastening_seat_belt': 4, 'using_multimedia_display': 5,
+    'sitting_still': 6, 'pressing_automation_button': 7, 'fetching_an_object': 8,
+    'opening_laptop': 9, 'working_on_laptop': 10, 'closing_laptop': 11,
+    'unfastening_seat_belt': 12, 'exiting_car': 13, 'adjusting_seat': 14,
+    'adjusting_mirrors': 15, 'hand_on_steering_wheel': 16, 'hands_on_steering_wheel': 17,
+    'looking_left': 18, 'looking_right': 19, 'looking_backwards': 20,
+    'drinking': 21, 'eating': 22, 'reading': 23, 'writing': 24,
+    'answering_phone': 25, 'hanging_up_phone': 26, 'texting': 27,
+    'talking_to_passenger': 28, 'operating_radio': 29, 'adjusting_air_vent': 30,
+    'putting_on_jacket': 31, 'taking_off_jacket': 32, 'putting_on_sunglasses': 33,
+    'taking_off_sunglasses': 34
+}
+
+def load_drivenact_annotations(activities_dir, camera_view, annotation_level, split_id=0):
+    """
+    Load DrivenAct activity annotations
+    
+    Args:
+        activities_dir: Path to activities_3s directory
+        camera_view: Camera view (e.g., 'inner_mirror', 'a_column_co_driver') 
+        annotation_level: 'midlevel', 'objectlevel', or 'tasklevel'
+        split_id: Split ID (0, 1, or 2)
+    
+    Returns:
+        Dictionary with train, val, test splits
+    """
+    view_dir = os.path.join(activities_dir, camera_view)
+    
+    splits = {}
+    for split_name in ['train', 'val', 'test']:
+        csv_file = f"{annotation_level}.chunks_90.split_{split_id}.{split_name}.csv"
+        csv_path = os.path.join(view_dir, csv_file)
+        
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            splits[split_name] = df
+        else:
+            print(f"Warning: {csv_path} not found")
+            splits[split_name] = pd.DataFrame()
+    
+    return splits
+
+def load_openpose_keypoints(keypoints_path):
+    """
+    Load OpenPose keypoints from CSV file.
+    """
+    if not os.path.exists(keypoints_path):
+        print(f"Warning: No keypoints file found at {keypoints_path}")
+        return None
+    
+    try:
+        # Load keypoints CSV
+        keypoints_df = pd.read_csv(keypoints_path)
+        
+        # DrivenAct OpenPose CSV format: frame_id, timestamp, then 26 keypoints * 4 (x,y,z,confidence)
+        # Total columns: 2 + 26*4 = 106 columns
+        if keypoints_df.shape[1] < 106:
+            print(f"Warning: Invalid keypoints format for {keypoints_path}, expected 106 columns, got {keypoints_df.shape[1]}")
+            return None
+        
+        # Extract keypoints (skip frame_id and timestamp columns)
+        # Columns 2-105: x1,y1,z1,c1, x2,y2,z2,c2, ... (26 keypoints * 4 values each)
+        keypoints = keypoints_df.iloc[:, 2:106].values  # Shape: (num_frames, 104)
+        keypoints = keypoints.reshape(keypoints.shape[0], 26, 4)  # (num_frames, 26, 4)
+        
+        # For compatibility with H36M format, we'll use only x,y,confidence (drop z)
+        keypoints_2d = keypoints[:, :, [0, 1, 3]]  # (num_frames, 26, 3)
+        
+        return keypoints_2d
+        
+    except Exception as e:
+        print(f"Error loading keypoints from {keypoints_path}: {e}")
+        return None
+
+def map_openpose_to_h36m(openpose_kpts):
+    """
+    Map DrivenAct OpenPose keypoints (26 points) to H36M format (17 joints)
+    
+    DrivenAct keypoints (from CSV analysis):
+    0: nose, 1: lElbow, 2: lWrist, 3: rHeel, 4: rHip, 5: rSmallToe, 6: neck, 
+    7: lSmallToe, 8: rWrist, 9: rAnkle, 10: lHip, 11: lHeel, 12: lKnee, 
+    13: lEye, 14: midHip, 15: background, 16: lEar, 17: rElbow, 18: rShoulder, 
+    19: rKnee, 20: lShoulder, 21: lBigToe, 22: rEye, 23: rEar, 24: rBigToe, 25: lAnkle
+    
+    H36M joints (17):
+    0: Hip, 1: RHip, 2: RKnee, 3: RAnkle, 4: LHip, 5: LKnee, 6: LAnkle,
+    7: Spine, 8: Thorax, 9: Neck/Nose, 10: Head, 11: LShoulder, 12: LElbow,
+    13: LWrist, 14: RShoulder, 15: RElbow, 16: RWrist
+    """
+    if openpose_kpts is None:
+        return None, None
+    
+    T = openpose_kpts.shape[0]
+    h36m_keypoints = np.zeros((1, T, 17, 3))  # Single person format (M, T, J, C)
+    
+    # Mapping from OpenPose indices to H36M
+    # Using available keypoints, some may be approximated
+    mapping = {
+        0: 14,  # Hip -> midHip
+        1: 4,   # RHip -> rHip  
+        2: 19,  # RKnee -> rKnee
+        3: 9,   # RAnkle -> rAnkle
+        4: 10,  # LHip -> lHip
+        5: 12,  # LKnee -> lKnee
+        6: 25,  # LAnkle -> lAnkle
+        7: 14,  # Spine -> midHip (approximation)
+        8: 6,   # Thorax -> neck
+        9: 0,   # Neck/Nose -> nose
+        10: 0,  # Head -> nose (approximation)
+        11: 20, # LShoulder -> lShoulder
+        12: 1,  # LElbow -> lElbow
+        13: 2,  # LWrist -> lWrist
+        14: 18, # RShoulder -> rShoulder
+        15: 17, # RElbow -> rElbow
+        16: 8,  # RWrist -> rWrist
+    }
+    
+    # Map coordinates and confidence
+    confidence = np.zeros((T, 17))
+    
+    for h36m_idx, openpose_idx in mapping.items():
+        if openpose_idx < openpose_kpts.shape[1]:  # Check bounds
+            h36m_keypoints[0, :, h36m_idx, :2] = openpose_kpts[:, openpose_idx, :2]  # x, y
+            confidence[:, h36m_idx] = openpose_kpts[:, openpose_idx, 2]  # confidence
+    
+    return h36m_keypoints, confidence
+
+def extract_video_chunk(video_path, timestamps_file, start_time, duration, target_frames=90):
+    """
+    Extract a specific time chunk from video using timestamps
+    
+    Args:
+        video_path: Path to video file
+        timestamps_file: Path to timestamps file
+        start_time: Start timestamp
+        duration: Duration in seconds (3.0 for 3s chunks)
+        target_frames: Target number of frames to extract
+        
+    Returns:
+        Frame indices to extract from the video
+    """
+    if not os.path.exists(timestamps_file):
+        print(f"Warning: Timestamps file not found: {timestamps_file}")
+        # Return evenly spaced frame indices as fallback
+        return np.linspace(0, target_frames-1, target_frames, dtype=int)
+    
+    try:
+        # Load timestamps
+        with open(timestamps_file, 'r') as f:
+            timestamps = [float(line.strip()) for line in f.readlines()]
+        
+        # Find frames within the time window
+        end_time = start_time + duration
+        frame_indices = []
+        
+        for i, ts in enumerate(timestamps):
+            if start_time <= ts <= end_time:
+                frame_indices.append(i)
+        
+        # Resample to target number of frames
+        if len(frame_indices) > 0:
+            if len(frame_indices) != target_frames:
+                indices = np.linspace(0, len(frame_indices)-1, target_frames, dtype=int)
+                frame_indices = [frame_indices[i] for i in indices]
+        else:
+            # Fallback to evenly spaced indices
+            frame_indices = list(range(min(target_frames, len(timestamps))))
+        
+        return frame_indices[:target_frames]
+        
+    except Exception as e:
+        print(f"Error processing timestamps: {e}")
+        return list(range(target_frames))
+
+def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirror', 
+                            annotation_level='midlevel', split_id=0, target_frames=90, validate=False):
+    """
+    Convert DrivenAct dataset to DriveBERT format
+    
+    Args:
+        dataset_dir: Path to DrivenAct dataset directory
+        output_path: Output pickle file path
+        camera_view: Camera view to use ('inner_mirror', 'a_column_co_driver', etc.)
+        annotation_level: 'midlevel', 'objectlevel', or 'tasklevel'
+        split_id: Split ID (0, 1, or 2)
+        target_frames: Number of frames per clip
+    """
+    print(f"Converting DrivenAct dataset: {camera_view}, {annotation_level}, split_{split_id}")
+    
+    # Load activity annotations
+    activities_dir = os.path.join(dataset_dir, 'activities_3s')
+    splits = load_drivenact_annotations(activities_dir, camera_view, annotation_level, split_id)
+    
+    # Setup directory paths
+    video_dir = os.path.join(dataset_dir, camera_view)
+    keypoints_dir = os.path.join(dataset_dir, 'openpose_3d')
+    
+    annotations = []
+    dataset_splits = {'train': [], 'val': [], 'test': []}
+    
+    # Process each split
+    for split_name, split_df in splits.items():
+        print(f"Processing {split_name} split: {len(split_df)} samples")
+        
+        # For testing, limit to first 10 samples
+        if validate:
+            split_df = split_df.head(10)
+            print(f"  Limited to {len(split_df)} samples for testing")
+        
+        for idx, row in tqdm(split_df.iterrows(), total=len(split_df), desc=f"Processing {split_name}"):
+            try:
+                # Extract information from row (actual CSV structure)
+                participant_id = f"vp{row['participant_id']}"
+                file_id = row['file_id']
+                annotation_id = row['annotation_id']
+                frame_start = row['frame_start']
+                frame_end = row['frame_end']
+                activity = row['activity']
+                chunk_id = row['chunk_id']
+                
+                # Extract run information from file_id
+                run_id = file_id.split('/')[-1].replace('.ids_1', '')  # Remove extension
+                
+                # Create unique sample name
+                sample_name = f"{participant_id}_{run_id}_{chunk_id}_{activity}"
+                
+                # Calculate frame range for the activity
+                num_frames = min(target_frames, frame_end - frame_start)
+                
+                # Find corresponding keypoints file  
+                kpts_vp_dir = os.path.join(keypoints_dir, participant_id)
+                keypoints_file = None
+                
+                if os.path.exists(kpts_vp_dir):
+                    keypoints_filename = f"{run_id}.ids_1.openpose.3d.csv"
+                    keypoints_file = os.path.join(kpts_vp_dir, keypoints_filename)
+                
+                if not keypoints_file or not os.path.exists(keypoints_file):
+                    print(f"Warning: No keypoints file found for {participant_id}, {run_id}")
+                    continue
+                
+                # Load keypoints for this time chunk
+                openpose_kpts = load_openpose_keypoints(keypoints_file)
+                if openpose_kpts is None:
+                    continue
+                
+                # Extract specific frame range
+                chunk_keypoints = None
+                if frame_end <= len(openpose_kpts):
+                    chunk_keypoints = openpose_kpts[frame_start:frame_end]
+                    
+                    # Resample to target frames if needed
+                    if len(chunk_keypoints) != target_frames:
+                        indices = np.linspace(0, len(chunk_keypoints)-1, target_frames, dtype=int)
+                        chunk_keypoints = chunk_keypoints[indices]
+                else:
+                    print(f"Warning: Frame range {frame_start}-{frame_end} exceeds keypoints length {len(openpose_kpts)}")
+                    continue
+                
+                if chunk_keypoints is None or len(chunk_keypoints) == 0:
+                    continue
+                
+                # Map to H36M format
+                h36m_keypoints, confidence = map_openpose_to_h36m(chunk_keypoints)
+                
+                if h36m_keypoints is None:
+                    continue
+                
+                # Get activity label
+                if annotation_level == 'midlevel':
+                    label = DRIVENACT_ACTIVITIES.get(activity, 0)
+                else:
+                    # For object/task level, you'd need different mappings
+                    label = hash(activity) % 100  # Temporary mapping
+                
+                # Create annotation entry
+                annotation = {
+                    'frame_dir': sample_name,
+                    'total_frames': target_frames,
+                    'img_shape': (480, 640),  # Typical video resolution
+                    'keypoint': h36m_keypoints[:, :, :, :2],  # (M, T, J, 2) - x,y coordinates
+                    'keypoint_score': confidence[np.newaxis, :, :],  # (M, T, J) - confidence
+                    'label': label,
+                    'activity_name': activity,
+                    'participant': participant_id,
+                    'run_id': run_id,
+                    'frame_start': frame_start,
+                    'frame_end': frame_end,
+                    'annotation_id': annotation_id,
+                    'chunk_id': chunk_id
+                }
+                
+                annotations.append(annotation)
+                dataset_splits[split_name].append(sample_name)
+                
+            except Exception as e:
+                print(f"Error processing sample {idx}: {e}")
+                continue
+    
+    # Create final dataset structure
+    dataset = {
+        'split': dataset_splits,
+        'annotations': annotations,
+        'metadata': {
+            'camera_view': camera_view,
+            'annotation_level': annotation_level,
+            'split_id': split_id,
+            'target_frames': target_frames,
+            'num_classes': len(DRIVENACT_ACTIVITIES) if annotation_level == 'midlevel' else 100
+        }
+    }
+    
+    # Save dataset
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'wb') as f:
+        pickle.dump(dataset, f)
+    
+    print(f"Dataset saved to {output_path}")
+    print(f"Total samples: {len(annotations)}")
+    for split_name, samples in dataset_splits.items():
+        print(f"  {split_name}: {len(samples)} samples")
+    
+    # Save activity classes
+    if annotation_level == 'midlevel':
+        activity_names_path = output_path.replace('.pkl', '_actions.txt')
+        with open(activity_names_path, 'w') as f:
+            for activity, idx in sorted(DRIVENACT_ACTIVITIES.items(), key=lambda x: x[1]):
+                f.write(f"{idx}. {activity}\n")
+        print(f"Activity names saved to {activity_names_path}")
+    
+    return dataset
+
+def validate_drivenact_dataset(dataset_path):
+    """
+    Validate the created DrivenAct dataset
+    """
+    print(f"Validating dataset: {dataset_path}")
+    
+    with open(dataset_path, 'rb') as f:
+        data = pickle.load(f)
+    
+    annotations = data['annotations']
+    splits = data['split']
+    metadata = data.get('metadata', {})
+    
+    print(f"Dataset contains {len(annotations)} samples")
+    print(f"Splits: {list(splits.keys())}")
+    print(f"Metadata: {metadata}")
+    
+    # Validate a few samples
+    for i, sample in enumerate(annotations[:3]):
+        keypoints = sample['keypoint']
+        scores = sample['keypoint_score']
+        
+        print(f"\nSample {i} ({sample['frame_dir']}):")
+        print(f"  Keypoints shape: {keypoints.shape}")
+        print(f"  Scores shape: {scores.shape}")
+        print(f"  Activity: {sample['activity_name']} (label: {sample['label']})")
+        print(f"  Participant: {sample['participant']}")
+        
+        # Basic validation
+        assert len(keypoints.shape) == 4, f"Invalid keypoint shape: {keypoints.shape}"
+        assert keypoints.shape[2] == 17, f"Expected 17 joints, got {keypoints.shape[2]}"
+        assert keypoints.shape[3] == 2, f"Expected 2 coordinates, got {keypoints.shape[3]}"
+    
+    print("\nValidation completed!")
+
+def main():
+    parser = argparse.ArgumentParser(description='Convert DrivenAct dataset to DriveBERT format')
+    parser.add_argument('--dataset_dir', required=True, help='Path to DrivenAct dataset directory')
+    parser.add_argument('--output_path', required=True, help='Output pickle file path')
+    parser.add_argument('--camera_view', default='inner_mirror', 
+                       choices=['inner_mirror', 'a_column_co_driver', 'a_column_driver', 
+                               'ceiling', 'kinect_color', 'kinect_depth', 'kinect_ir', 'steering_wheel'],
+                       help='Camera view to use')
+    parser.add_argument('--annotation_level', default='midlevel',
+                       choices=['midlevel', 'objectlevel', 'tasklevel'],
+                       help='Annotation level')
+    parser.add_argument('--split_id', type=int, default=0, choices=[0, 1, 2],
+                       help='Split ID (0, 1, or 2)')
+    parser.add_argument('--target_frames', type=int, default=90,
+                       help='Target number of frames per clip')
+    parser.add_argument('--validate', action='store_true', help='Validate the created dataset')
+    
+    args = parser.parse_args()
+    
+    # Convert dataset
+    dataset = convert_drivenact_dataset(
+        dataset_dir=args.dataset_dir,
+        output_path=args.output_path,
+        camera_view=args.camera_view,
+        annotation_level=args.annotation_level,
+        split_id=args.split_id,
+        target_frames=args.target_frames,
+        validate=args.validate
+    )
+    
+    # Validate if requested
+    if args.validate:
+        validate_drivenact_dataset(args.output_path)
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,38 @@
+# Driving Behavior Recognition Training Configuration
+# Specialized config for automotive behavior analysis with 39 action classes
+
+# General  
+finetune: False  # Set to True to finetune from pretrained MotionBERT
+partial_train: null  # null or list of layers to freeze
+
+# Training Parameters
+epochs: 300  # Number of training epochs
+batch_size: 16  # Smaller batch size due to 39 classes and longer sequences
+lr_backbone: 0.0001  # Learning rate for backbone
+lr_head: 0.0002  # Slightly higher learning rate for classification head
+weight_decay: 0.01  # Weight decay for regularization
+lr_decay: 0.98  # Learning rate decay factor per epoch (slightly more aggressive)
+
+# Model Architecture
+model_version: class  # 'class' for classification
+maxlen: 243  # Maximum sequence length (frames)
+dim_feat: 512  # Feature dimension
+mlp_ratio: 2  # MLP expansion ratio
+depth: 6  # Slightly deeper transformer for complex driving behaviors
+dim_rep: 512  # Representation dimension
+num_heads: 8  # Number of attention heads
+att_fuse: True  # Whether to use attention fusion
+num_joints: 17  # Number of joints (H36M format)
+hidden_dim: 3072  # Larger hidden dimension for 39 classes
+dropout_ratio: 0.4  # Moderate dropout for complex dataset
+
+# Dataset Configuration
+dataset: driving_behavior  # Name of your dataset (should match pickle file name without .pkl)
+data_split: train_val  # Split naming convention
+clip_len: 243  # Number of frames per clip
+action_classes: 39  # Number of driving behavior classes
+
+# Data Augmentation (conservative for driving behaviors to preserve meaning)
+random_move: True  # Apply random motion augmentation during training
+scale_range_train: [1, 2]  # Conservative scaling range for training [min, max]
+scale_range_test: [1, 1]  # No scaling for testing to maintain precision

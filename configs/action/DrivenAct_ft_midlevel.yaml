@@ -1,0 +1,42 @@
+# DrivenAct Action Recognition Finetune Configuration
+# Finetuning from pretrained MotionBERT for driving behavior recognition
+
+# General  
+finetune: True  # Enable finetuning mode
+partial_train: null  # null to train all layers
+
+# Training Parameters
+epochs: 50  # Fewer epochs for finetuning
+batch_size: 16  # Consistent with training config
+lr_backbone: 0.00002  # Very low learning rate for backbone when finetuning
+lr_head: 0.0001  # Higher learning rate for new classification head
+weight_decay: 0.005  # Lower weight decay for finetuning
+lr_decay: 0.95  # More aggressive decay
+
+# Model Architecture (must match pretrained model)
+model_version: class
+maxlen: 90  # DrivenAct clip length
+dim_feat: 512
+mlp_ratio: 2
+depth: 5
+dim_rep: 512
+num_heads: 8
+att_fuse: True
+num_joints: 17
+hidden_dim: 2048
+dropout_ratio: 0.2  # Lower dropout for finetuning
+
+# Dataset Configuration
+dataset: drivenact_inner_mirror_midlevel_split0
+data_split: train_val
+clip_len: 90
+action_classes: 35
+
+# Data Augmentation (Minimal for finetuning)
+random_move: False  # No augmentation for stable finetuning
+scale_range_train: [1, 1]  # No scaling
+scale_range_test: [1, 1]
+
+# DrivenAct specific settings
+camera_view: inner_mirror
+annotation_level: midlevel
