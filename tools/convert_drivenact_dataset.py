@@ -19,21 +19,38 @@ import multiprocessing as mp
 # Add the lib directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lib'))
 
-# DrivenAct activity mappings (based on actual CSV data)
-DRIVENACT_ACTIVITIES = {
-    'closing_door_outside': 0, 'opening_door_outside': 1, 'entering_car': 2,
-    'closing_door_inside': 3, 'fastening_seat_belt': 4, 'using_multimedia_display': 5,
-    'sitting_still': 6, 'pressing_automation_button': 7, 'fetching_an_object': 8,
-    'opening_laptop': 9, 'working_on_laptop': 10, 'closing_laptop': 11,
-    'unfastening_seat_belt': 12, 'exiting_car': 13, 'adjusting_seat': 14,
-    'adjusting_mirrors': 15, 'hand_on_steering_wheel': 16, 'hands_on_steering_wheel': 17,
-    'looking_left': 18, 'looking_right': 19, 'looking_backwards': 20,
-    'drinking': 21, 'eating': 22, 'reading': 23, 'writing': 24,
-    'answering_phone': 25, 'hanging_up_phone': 26, 'texting': 27,
-    'talking_to_passenger': 28, 'operating_radio': 29, 'adjusting_air_vent': 30,
-    'putting_on_jacket': 31, 'taking_off_jacket': 32, 'putting_on_sunglasses': 33,
-    'taking_off_sunglasses': 34
-}
+# DrivenAct activity mappings will be dynamically created from actual data
+# This avoids hardcoding and missing activities
+DRIVENACT_ACTIVITIES = {}
+
+def build_activity_mapping(splits, annotation_level='midlevel'):
+    """
+    Build activity mapping dynamically from actual data using FULL dataset
+    """
+    all_activities = set()
+    
+    # Use full dataset if available, otherwise combine all splits
+    if '_full_for_activities' in splits:
+        full_df = splits['_full_for_activities']
+        if 'activity' in full_df.columns:
+            all_activities.update(full_df['activity'].unique())
+            print(f"Building activity mapping from full dataset with {len(full_df)} samples")
+    else:
+        # Fallback: collect from all splits
+        for split_name, split_df in splits.items():
+            if split_name != '_full_for_activities' and 'activity' in split_df.columns:
+                activities = split_df['activity'].unique()
+                all_activities.update(activities)
+        print(f"Building activity mapping from combined splits")
+    
+    # Create sorted mapping
+    activity_mapping = {activity: idx for idx, activity in enumerate(sorted(all_activities))}
+    
+    print(f"Found {len(activity_mapping)} unique {annotation_level} activities:")
+    for activity, idx in sorted(activity_mapping.items(), key=lambda x: x[1]):
+        print(f"  {idx:2d}. {activity}")
+    
+    return activity_mapping
 
 def load_drivenact_annotations(activities_dir, camera_view, annotation_level, split_id=0):
     """
@@ -46,7 +63,7 @@ def load_drivenact_annotations(activities_dir, camera_view, annotation_level, sp
         split_id: Split ID (0, 1, or 2)
     
     Returns:
-        Dictionary with train, val, test splits
+        Dictionary with train, val, test splits AND full dataset for activity mapping
     """
     view_dir = os.path.join(activities_dir, camera_view)
     
@@ -61,6 +78,23 @@ def load_drivenact_annotations(activities_dir, camera_view, annotation_level, sp
         else:
             print(f"Warning: {csv_path} not found")
             splits[split_name] = pd.DataFrame()
+    
+    # IMPORTANT: Load full CSV for complete activity mapping
+    full_csv_file = f"{annotation_level}.chunks_90.csv"
+    full_csv_path = os.path.join(view_dir, full_csv_file)
+    if os.path.exists(full_csv_path):
+        full_df = pd.read_csv(full_csv_path)
+        splits['_full_for_activities'] = full_df
+        print(f"Loaded full dataset for activity mapping: {len(full_df)} samples")
+    else:
+        print(f"Warning: Full CSV not found: {full_csv_path}")
+        # Fallback: combine all splits
+        all_data = []
+        for split_df in splits.values():
+            if not split_df.empty:
+                all_data.append(split_df)
+        if all_data:
+            splits['_full_for_activities'] = pd.concat(all_data, ignore_index=True)
     
     return splits
 
@@ -221,6 +255,11 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
     activities_dir = os.path.join(dataset_dir, 'activities_3s')
     splits = load_drivenact_annotations(activities_dir, camera_view, annotation_level, split_id)
     
+    # Build dynamic activity mapping from actual data
+    activity_mapping = build_activity_mapping(splits, annotation_level)
+    global DRIVENACT_ACTIVITIES
+    DRIVENACT_ACTIVITIES = activity_mapping
+    
     # Setup directory paths
     video_dir = os.path.join(dataset_dir, camera_view)
     keypoints_dir = os.path.join(dataset_dir, 'openpose_3d')
@@ -228,8 +267,11 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
     annotations = []
     dataset_splits = {'train': [], 'val': [], 'test': []}
     
-    # Process each split
+    # Process each split (excluding the full dataset used for activity mapping)
     for split_name, split_df in splits.items():
+        if split_name == '_full_for_activities':  # Skip the full dataset
+            continue
+            
         print(f"Processing {split_name} split: {len(split_df)} samples")
         
         # For testing, limit to first 10 samples

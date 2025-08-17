@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from lib.utils.tools import *
 from lib.utils.learning import *
 from lib.model.loss import *
-from lib.data.dataset_action import NTURGBD
+from lib.data.dataset_action import NTURGBD, DrivenAct
 from lib.model.model_action import ActionNet
 
 random.seed(0)
@@ -122,17 +122,56 @@ def train_with_config(args, opts):
           'prefetch_factor': 4,
           'persistent_workers': True
     }
-    data_path = 'data/action/%s.pkl' % args.dataset
-    ntu60_xsub_train = NTURGBD(data_path=data_path, data_split=args.data_split+'_train', n_frames=args.clip_len, random_move=args.random_move, scale_range=args.scale_range_train)
-    ntu60_xsub_val = NTURGBD(data_path=data_path, data_split=args.data_split+'_val', n_frames=args.clip_len, random_move=False, scale_range=args.scale_range_test)
+    
+    # Dataset selection and loading
+    if args.dataset == 'drivenact':
+        # DrivenAct dataset loading
+        data_path = args.data_path if hasattr(args, 'data_path') else 'data/action/drivenact_complete_39_activities.pkl'
+        
+        train_dataset = DrivenAct(data_path=data_path, data_split='train', n_frames=args.clip_len, random_move=args.random_move, scale_range=args.scale_range_train)
+        val_dataset = DrivenAct(data_path=data_path, data_split='val', n_frames=args.clip_len, random_move=False, scale_range=args.scale_range_test)
+        
+        print(f"DrivenAct dataset loaded:")
+        print(f"  Train samples: {len(train_dataset)}")
+        print(f"  Val samples: {len(val_dataset)}")
+        
+    else:
+        # NTU dataset loading (original)
+        data_path = 'data/action/%s.pkl' % args.dataset
+        train_dataset = NTURGBD(data_path=data_path, data_split=args.data_split+'_train', n_frames=args.clip_len, random_move=args.random_move, scale_range=args.scale_range_train)
+        val_dataset = NTURGBD(data_path=data_path, data_split=args.data_split+'_val', n_frames=args.clip_len, random_move=False, scale_range=args.scale_range_test)
 
-    train_loader = DataLoader(ntu60_xsub_train, **trainloader_params)
-    test_loader = DataLoader(ntu60_xsub_val, **testloader_params)
+    train_loader = DataLoader(train_dataset, **trainloader_params)
+    test_loader = DataLoader(val_dataset, **testloader_params)
         
     chk_filename = os.path.join(opts.checkpoint, "latest_epoch.bin")
     if os.path.exists(chk_filename):
         opts.resume = chk_filename
-    if opts.resume or opts.evaluate:
+    
+    # Handle finetuning from pretrained models
+    if args.finetune and hasattr(args, 'checkpoint_path') and args.checkpoint_path:
+        print(f'Loading pretrained checkpoint for finetuning: {args.checkpoint_path}')
+        checkpoint = torch.load(args.checkpoint_path, map_location=lambda storage, loc: storage)
+        
+        # For finetuning, we load only compatible weights (backbone)
+        model_state = checkpoint.get('model', checkpoint)
+        current_state = model.state_dict()
+        
+        # Filter out head layers that have different dimensions
+        filtered_state = {}
+        for k, v in model_state.items():
+            if k in current_state:
+                if v.shape == current_state[k].shape:
+                    filtered_state[k] = v
+                else:
+                    print(f'Skipping {k} due to shape mismatch: {v.shape} vs {current_state[k].shape}')
+            else:
+                print(f'Skipping {k} - not found in current model')
+        
+        model.load_state_dict(filtered_state, strict=False)
+        print(f'Loaded {len(filtered_state)} parameters from pretrained model')
+    
+    elif opts.resume or opts.evaluate:
         chk_filename = opts.evaluate if opts.evaluate else opts.resume
         print('Loading checkpoint', chk_filename)
         checkpoint = torch.load(chk_filename, map_location=lambda storage, loc: storage)

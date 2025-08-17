@@ -204,3 +204,115 @@ class NTURGBD1Shot(ActionDataset):
         else:
             result = motion
         return result.astype(np.float32), label
+
+class DrivenAct(Dataset):
+    """
+    DrivenAct dataset loader for driving behavior recognition
+    """
+    def __init__(self, data_path, data_split, n_frames=90, random_move=True, scale_range=[1,1]):
+        """
+        Args:
+            data_path: Path to DrivenAct pickle file
+            data_split: 'train', 'val', or 'test'
+            n_frames: Number of frames per clip (90 for DrivenAct)
+            random_move: Whether to apply random movement augmentation
+            scale_range: Scale augmentation range
+        """
+        self.data_path = data_path
+        self.data_split = data_split
+        self.n_frames = n_frames
+        self.random_move = random_move
+        self.scale_range = scale_range
+        
+        # Load DrivenAct data
+        print(f"Loading DrivenAct data from: {data_path}")
+        data = read_pkl(data_path)
+        
+        # Extract samples for the specified split
+        if data_split in data:
+            split_data = data[data_split]
+        else:
+            raise ValueError(f"Split '{data_split}' not found in data. Available: {list(data.keys())}")
+        
+        print(f"Processing {len(split_data)} samples for {data_split} split")
+        
+        motions = []
+        labels = []
+        
+        # Build activity mapping from actions file
+        activity_mapping = self._build_activity_mapping(data_path.replace('.pkl', '_actions.txt'))
+        
+        for sample in split_data:
+            # Get keypoints and action
+            keypoints = sample['keypoints']  # (M, T, J, 2) format from our converter
+            action = sample['action']
+            
+            # Convert action name to label index
+            if action in activity_mapping:
+                label = activity_mapping[action]
+            else:
+                print(f"Warning: Unknown activity '{action}', skipping sample")
+                continue
+            
+            # Add confidence channel (using sample confidence if available)
+            if 'confidence' in sample:
+                confidence = sample['confidence']  # (T, J)
+                confidence = confidence[np.newaxis, :, :, np.newaxis]  # (1, T, J, 1)
+            else:
+                # Create default confidence of 0.8 for all keypoints
+                M, T, J, C = keypoints.shape
+                confidence = np.full((M, T, J, 1), 0.8, dtype=np.float32)
+            
+            # Combine keypoints and confidence: (M, T, J, 3) -> x, y, confidence
+            motion = np.concatenate([keypoints, confidence], axis=-1)
+            
+            # Ensure we have exactly n_frames
+            if motion.shape[1] != n_frames:
+                # Resample to target frames
+                old_frames = motion.shape[1]
+                indices = np.linspace(0, old_frames - 1, n_frames)
+                resampled_motion = np.zeros((motion.shape[0], n_frames, motion.shape[2], motion.shape[3]))
+                for m in range(motion.shape[0]):
+                    for j in range(motion.shape[2]):
+                        for c in range(motion.shape[3]):
+                            resampled_motion[m, :, j, c] = np.interp(
+                                indices, np.arange(old_frames), motion[m, :, j, c]
+                            )
+                motion = resampled_motion
+            
+            motions.append(motion.astype(np.float32))
+            labels.append(label)
+        
+        self.motions = np.array(motions)
+        self.labels = np.array(labels)
+        
+        print(f"Loaded {len(self.motions)} samples, {len(np.unique(self.labels))} unique classes")
+    
+    def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.motions)
+    
+    def _build_activity_mapping(self, actions_file):
+        """Build activity name to index mapping from actions file"""
+        activity_mapping = {}
+        if os.path.exists(actions_file):
+            with open(actions_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and '. ' in line:
+                        idx_str, activity = line.split('. ', 1)
+                        activity_mapping[activity] = int(idx_str)
+        else:
+            print(f"Warning: Actions file not found: {actions_file}")
+        return activity_mapping
+    
+    def __getitem__(self, idx):
+        'Generates one sample of data'
+        motion, label = self.motions[idx], self.labels[idx] # (M,T,J,C)
+        if self.random_move:
+            motion = random_move(motion)
+        if self.scale_range:
+            result = crop_scale(motion, scale_range=self.scale_range)
+        else:
+            result = motion
+        return result.astype(np.float32), label
