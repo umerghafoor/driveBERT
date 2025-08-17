@@ -12,6 +12,9 @@ import argparse
 from tqdm import tqdm
 from collections import defaultdict
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
+import multiprocessing as mp
 
 # Add the lib directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -61,36 +64,42 @@ def load_drivenact_annotations(activities_dir, camera_view, annotation_level, sp
     
     return splits
 
+# Global cache for loaded keypoint files to avoid re-reading
+_KEYPOINT_CACHE = {}
+
 def load_openpose_keypoints(keypoints_path):
     """
-    Load OpenPose keypoints from CSV file.
+    Load OpenPose keypoints from CSV file with caching.
     """
     if not os.path.exists(keypoints_path):
-        print(f"Warning: No keypoints file found at {keypoints_path}")
         return None
     
+    # Check cache first
+    if keypoints_path in _KEYPOINT_CACHE:
+        return _KEYPOINT_CACHE[keypoints_path]
+    
     try:
-        # Load keypoints CSV
-        keypoints_df = pd.read_csv(keypoints_path)
+        # Load keypoints CSV with optimized settings
+        keypoints_df = pd.read_csv(keypoints_path, low_memory=False)
         
         # DrivenAct OpenPose CSV format: frame_id, timestamp, then 26 keypoints * 4 (x,y,z,confidence)
-        # Total columns: 2 + 26*4 = 106 columns
         if keypoints_df.shape[1] < 106:
-            print(f"Warning: Invalid keypoints format for {keypoints_path}, expected 106 columns, got {keypoints_df.shape[1]}")
+            print(f"Warning: Invalid format {keypoints_path}: {keypoints_df.shape[1]} cols")
             return None
         
-        # Extract keypoints (skip frame_id and timestamp columns)
-        # Columns 2-105: x1,y1,z1,c1, x2,y2,z2,c2, ... (26 keypoints * 4 values each)
-        keypoints = keypoints_df.iloc[:, 2:106].values  # Shape: (num_frames, 104)
-        keypoints = keypoints.reshape(keypoints.shape[0], 26, 4)  # (num_frames, 26, 4)
+        # Extract and reshape keypoints efficiently
+        keypoints = keypoints_df.iloc[:, 2:106].values.reshape(-1, 26, 4)
         
-        # For compatibility with H36M format, we'll use only x,y,confidence (drop z)
-        keypoints_2d = keypoints[:, :, [0, 1, 3]]  # (num_frames, 26, 3)
+        # Keep only x,y,confidence (drop z) - convert to float32 for memory efficiency
+        keypoints_2d = keypoints[:, :, [0, 1, 3]].astype(np.float32)
+        
+        # Cache the result
+        _KEYPOINT_CACHE[keypoints_path] = keypoints_2d
         
         return keypoints_2d
         
     except Exception as e:
-        print(f"Error loading keypoints from {keypoints_path}: {e}")
+        print(f"Error loading {keypoints_path}: {e}")
         return None
 
 def map_openpose_to_h36m(openpose_kpts):

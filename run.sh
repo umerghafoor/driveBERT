@@ -15,3 +15,12 @@
 python infer_wild_mesh.py --vid_path dta/truck_driver.mp4 --json_path dta/alphapose-results.json --out_path result_e
 
 cd /mnt/1C00FF7F00FF5DE8/Users/Github/driveBERT && python tools/convert_drivenact_dataset.py --dataset_dir /mnt/1C00FF7F00FF5DE8/Users/datasets/Drivenact --output_path data/action/test_drivenact.pkl --camera_view inner_mirror --annotation_level midlevel --split_id 0 --target_frames 90 --validate 2>&1 | head -30
+
+# Full training dataset
+python tools/convert_drivenact_dataset.py \
+  --dataset_dir /mnt/1C00FF7F00FF5DE8/Users/datasets/Drivenact \
+  --output_path data/action/drivenact_inner_mirror_midlevel_split0.pkl \
+  --camera_view inner_mirror \
+  --annotation_level midlevel \
+  --split_id 0 \
+  --target_frames 90
