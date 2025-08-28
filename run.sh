@@ -26,7 +26,7 @@ python tools/convert_drivenact_dataset.py \
   --target_frames 90
 
 # Train DrivenAct action recognition model
-/mnt/1C00FF7F00FF5DE8/Users/Github/driveBERT/.venv/bin/python train_custom_action.py \
+python train_custom_action.py \
 --config configs/action/DrivenAct_train_midlevel.yaml \
 --checkpoint checkpoint/action/drivenact_training \
 --dataset_type pickle
