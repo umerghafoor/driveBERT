@@ -223,9 +223,18 @@ def train_with_config(args, opts):
         'persistent_workers': True
     }
     
-    # Create datasets
-    train_dataset = create_dataset(args, opts, data_split=args.data_split+'_train', is_train=True)
-    val_dataset = create_dataset(args, opts, data_split=args.data_split+'_val', is_train=False)
+    # Create datasets with proper DrivenAct split handling
+    if 'drivenact' in args.dataset.lower():
+        # DrivenAct has direct 'train', 'val', 'test' splits
+        train_split = 'train'
+        val_split = 'val'
+    else:
+        # Other datasets use prefix + '_train', prefix + '_val'
+        train_split = args.data_split + '_train'
+        val_split = args.data_split + '_val'
+    
+    train_dataset = create_dataset(args, opts, data_split=train_split, is_train=True)
+    val_dataset = create_dataset(args, opts, data_split=val_split, is_train=False)
     
     train_loader = DataLoader(train_dataset, **trainloader_params)
     test_loader = DataLoader(val_dataset, **testloader_params)
@@ -247,9 +256,9 @@ def train_with_config(args, opts):
     if not opts.evaluate:
         # Setup optimizer
         optimizer = optim.AdamW([
-            {"params": filter(lambda p: p.requires_grad, model.module.backbone.parameters()), 
+            {"params": filter(lambda p: p.requires_grad, model.backbone.parameters()), 
              "lr": args.lr_backbone},
-            {"params": filter(lambda p: p.requires_grad, model.module.head.parameters()), 
+            {"params": filter(lambda p: p.requires_grad, model.head.parameters()), 
              "lr": args.lr_head},
         ], lr=args.lr_backbone, weight_decay=args.weight_decay)
 

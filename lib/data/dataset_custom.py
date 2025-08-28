@@ -44,8 +44,9 @@ class CustomActionDataset(ActionDataset):
         # Normalize keypoints if not already normalized
         self._normalize_keypoints()
         
-        # Filter out samples with too many missing keypoints
-        self._filter_low_quality_samples()
+        # Temporarily disable quality filtering for DrivenAct to debug
+        # self._filter_low_quality_samples()
+        print(f"Dataset loaded: {len(self.motions)} samples (quality filtering disabled)")
     
     def _interpolate_missing_keypoints(self):
         """
@@ -81,9 +82,10 @@ class CustomActionDataset(ActionDataset):
             if np.max(np.abs(motion[:, :, :, :2])) > 2:
                 print(f"Warning: Sample {i} may need normalization")
     
-    def _filter_low_quality_samples(self, min_confidence_ratio=0.5):
+    def _filter_low_quality_samples(self, min_confidence_ratio=0.1):
         """
         Filter out samples with too many missing keypoints
+        More lenient for DrivenAct dataset which may have lower confidence scores
         """
         valid_indices = []
         
@@ -96,11 +98,15 @@ class CustomActionDataset(ActionDataset):
                     valid_indices.append(i)
                 else:
                     print(f"Filtering out sample {i} (confidence ratio: {valid_ratio:.2f})")
+            else:
+                # If no confidence channel, keep all samples
+                valid_indices.append(i)
         
         if len(valid_indices) < len(self.motions):
-            self.motions = self.motions[valid_indices]
-            self.labels = self.labels[valid_indices]
-            print(f"Filtered dataset: {len(valid_indices)}/{len(self.motions)} samples kept")
+            # Apply filtering
+            self.motions = [self.motions[i] for i in valid_indices]
+            self.labels = [self.labels[i] for i in valid_indices]
+            print(f"Filtered dataset: {len(valid_indices)}/{len(self.motions) + len(valid_indices)} samples kept")
     
     def __getitem__(self, idx):
         """

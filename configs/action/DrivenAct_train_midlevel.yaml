@@ -28,9 +28,9 @@ dropout_ratio: 0.3  # Lower dropout for fine-grained activities
 
 # Dataset Configuration
 dataset: drivenact_inner_mirror_midlevel_split0  # Dataset name
-data_split: train_val  # Split naming convention (train_val_test)
+data_split: drivenact  # DrivenAct identifier (handled specially in training script)
 clip_len: 90  # Number of frames per clip (3 seconds at 30fps)
-action_classes: 35  # Number of activities in DrivenAct (updated from actual data)
+action_classes: 39  # Number of activities in DrivenAct (updated from actual data)
 
 # Data Augmentation (Conservative for driving activities)
 random_move: True  # Apply random motion augmentation

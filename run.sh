@@ -12,11 +12,11 @@
 # python infer_wild.py --vid_path dta/truck_driver.mp4 --json_path dta/alphapose-results.json --out_path "result"
 
 # Video Inference 3D Pose
-python infer_wild_mesh.py --vid_path dta/truck_driver.mp4 --json_path dta/alphapose-results.json --out_path result_e
+# python infer_wild_mesh.py --vid_path dta/truck_driver.mp4 --json_path dta/alphapose-results.json --out_path result_e
 
-cd /mnt/1C00FF7F00FF5DE8/Users/Github/driveBERT && python tools/convert_drivenact_dataset.py --dataset_dir /mnt/1C00FF7F00FF5DE8/Users/datasets/Drivenact --output_path data/action/test_drivenact.pkl --camera_view inner_mirror --annotation_level midlevel --split_id 0 --target_frames 90 --validate 2>&1 | head -30
+# cd /mnt/1C00FF7F00FF5DE8/Users/Github/driveBERT && python tools/convert_drivenact_dataset.py --dataset_dir /mnt/1C00FF7F00FF5DE8/Users/datasets/Drivenact --output_path data/action/test_drivenact.pkl --camera_view inner_mirror --annotation_level midlevel --split_id 0 --target_frames 90 --validate 2>&1 | head -30
 
-# Full training dataset
+# Full training dataset conversion
 python tools/convert_drivenact_dataset.py \
   --dataset_dir /mnt/1C00FF7F00FF5DE8/Users/datasets/Drivenact \
   --output_path data/action/drivenact_inner_mirror_midlevel_split0.pkl \
@@ -24,3 +24,9 @@ python tools/convert_drivenact_dataset.py \
   --annotation_level midlevel \
   --split_id 0 \
   --target_frames 90
+
+# Train DrivenAct action recognition model
+/mnt/1C00FF7F00FF5DE8/Users/Github/driveBERT/.venv/bin/python train_custom_action.py \
+--config configs/action/DrivenAct_train_midlevel.yaml \
+--checkpoint checkpoint/action/drivenact_training \
+--dataset_type pickle
