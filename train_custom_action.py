@@ -255,10 +255,13 @@ def train_with_config(args, opts):
     
     if not opts.evaluate:
         # Setup optimizer
+        # Use model.module if wrapped in DataParallel
+        backbone = model.module.backbone if isinstance(model, nn.DataParallel) else model.backbone
+        head = model.module.head if isinstance(model, nn.DataParallel) else model.head
         optimizer = optim.AdamW([
-            {"params": filter(lambda p: p.requires_grad, model.backbone.parameters()), 
+            {"params": filter(lambda p: p.requires_grad, backbone.parameters()), 
              "lr": args.lr_backbone},
-            {"params": filter(lambda p: p.requires_grad, model.head.parameters()), 
+            {"params": filter(lambda p: p.requires_grad, head.parameters()), 
              "lr": args.lr_head},
         ], lr=args.lr_backbone, weight_decay=args.weight_decay)
 
