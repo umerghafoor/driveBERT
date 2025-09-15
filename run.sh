@@ -22,11 +22,11 @@ python tools/convert_drivenact_dataset.py \
   --output_path data/action/drivenact_inner_mirror_midlevel_split0.pkl \
   --camera_view inner_mirror \
   --annotation_level midlevel \
-  --split_id 0 \
-  --target_frames 90
+  --split_id 0
 
-# Train DrivenAct action recognition model
-python train_custom_action.py \
---config configs/action/DrivenAct_train_midlevel.yaml \
---checkpoint checkpoint/action/drivenact_training \
---dataset_type pickle
+
+# # Train DrivenAct action recognition model
+# python train_custom_action.py \
+# --config configs/action/DrivenAct_train_midlevel.yaml \
+# --checkpoint checkpoint/action/drivenact_training \
+# --dataset_type pickle

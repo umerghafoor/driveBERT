@@ -189,55 +189,8 @@ def map_openpose_to_h36m(openpose_kpts):
     
     return h36m_keypoints, confidence
 
-def extract_video_chunk(video_path, timestamps_file, start_time, duration, target_frames=90):
-    """
-    Extract a specific time chunk from video using timestamps
-    
-    Args:
-        video_path: Path to video file
-        timestamps_file: Path to timestamps file
-        start_time: Start timestamp
-        duration: Duration in seconds (3.0 for 3s chunks)
-        target_frames: Target number of frames to extract
-        
-    Returns:
-        Frame indices to extract from the video
-    """
-    if not os.path.exists(timestamps_file):
-        print(f"Warning: Timestamps file not found: {timestamps_file}")
-        # Return evenly spaced frame indices as fallback
-        return np.linspace(0, target_frames-1, target_frames, dtype=int)
-    
-    try:
-        # Load timestamps
-        with open(timestamps_file, 'r') as f:
-            timestamps = [float(line.strip()) for line in f.readlines()]
-        
-        # Find frames within the time window
-        end_time = start_time + duration
-        frame_indices = []
-        
-        for i, ts in enumerate(timestamps):
-            if start_time <= ts <= end_time:
-                frame_indices.append(i)
-        
-        # Resample to target number of frames
-        if len(frame_indices) > 0:
-            if len(frame_indices) != target_frames:
-                indices = np.linspace(0, len(frame_indices)-1, target_frames, dtype=int)
-                frame_indices = [frame_indices[i] for i in indices]
-        else:
-            # Fallback to evenly spaced indices
-            frame_indices = list(range(min(target_frames, len(timestamps))))
-        
-        return frame_indices[:target_frames]
-        
-    except Exception as e:
-        print(f"Error processing timestamps: {e}")
-        return list(range(target_frames))
-
 def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirror', 
-                            annotation_level='midlevel', split_id=0, target_frames=90, validate=False):
+                            annotation_level='midlevel', split_id=0, validate=False):
     """
     Convert DrivenAct dataset to DriveBERT format
     
@@ -247,7 +200,6 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
         camera_view: Camera view to use ('inner_mirror', 'a_column_co_driver', etc.)
         annotation_level: 'midlevel', 'objectlevel', or 'tasklevel'
         split_id: Split ID (0, 1, or 2)
-        target_frames: Number of frames per clip
     """
     print(f"Converting DrivenAct dataset: {camera_view}, {annotation_level}, split_{split_id}")
     
@@ -292,6 +244,8 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
                 
                 # Extract run information from file_id
                 run_id = file_id.split('/')[-1].replace('.ids_1', '')  # Remove extension
+
+                # print(f"Processing sample: {participant_id}, {run_id}, frames {frame_start}-{frame_end}, activity: {activity}")
                 
                 # Create unique sample name
                 sample_name = f"{participant_id}_{run_id}_{chunk_id}_{activity}"
@@ -318,10 +272,6 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
                 if frame_end <= len(openpose_kpts):
                     chunk_keypoints = openpose_kpts[frame_start:frame_end]
                     
-                    # Resample to target frames if needed
-                    if len(chunk_keypoints) != target_frames:
-                        indices = np.linspace(0, len(chunk_keypoints)-1, target_frames, dtype=int)
-                        chunk_keypoints = chunk_keypoints[indices]
                 else:
                     print(f"Warning: Frame range {frame_start}-{frame_end} exceeds keypoints length {len(openpose_kpts)}")
                     continue
@@ -345,7 +295,6 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
                 # Create annotation entry
                 annotation = {
                     'frame_dir': sample_name,
-                    'total_frames': target_frames,
                     'img_shape': (480, 640),  # Typical video resolution
                     'keypoint': h36m_keypoints[:, :, :, :2],  # (M, T, J, 2) - x,y coordinates
                     'keypoint_score': confidence[np.newaxis, :, :],  # (M, T, J) - confidence
@@ -374,7 +323,6 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
             'camera_view': camera_view,
             'annotation_level': annotation_level,
             'split_id': split_id,
-            'target_frames': target_frames,
             'num_classes': len(DRIVENACT_ACTIVITIES) if annotation_level == 'midlevel' else 100
         }
     }
@@ -447,8 +395,6 @@ def main():
                        help='Annotation level')
     parser.add_argument('--split_id', type=int, default=0, choices=[0, 1, 2],
                        help='Split ID (0, 1, or 2)')
-    parser.add_argument('--target_frames', type=int, default=90,
-                       help='Target number of frames per clip')
     parser.add_argument('--validate', action='store_true', help='Validate the created dataset')
     
     args = parser.parse_args()
@@ -460,7 +406,6 @@ def main():
         camera_view=args.camera_view,
         annotation_level=args.annotation_level,
         split_id=args.split_id,
-        target_frames=args.target_frames,
         validate=args.validate
     )
     
