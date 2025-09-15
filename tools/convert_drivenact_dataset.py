@@ -296,9 +296,6 @@ def convert_drivenact_dataset(dataset_dir, output_path, camera_view='inner_mirro
                 # Create unique sample name
                 sample_name = f"{participant_id}_{run_id}_{chunk_id}_{activity}"
                 
-                # Calculate frame range for the activity
-                num_frames = min(target_frames, frame_end - frame_start)
-                
                 # Find corresponding keypoints file  
                 kpts_vp_dir = os.path.join(keypoints_dir, participant_id)
                 keypoints_file = None
