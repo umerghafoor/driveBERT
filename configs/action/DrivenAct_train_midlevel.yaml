@@ -7,7 +7,7 @@ partial_train: null  # null or list of layers to freeze
 
 # Training Parameters
 epochs: 200  # Reduced from 300 as DrivenAct is pre-segmented
-batch_size: 16  # Smaller batch size for detailed driving activities
+batch_size: 8  # Smaller batch size for detailed driving activities
 lr_backbone: 0.00005  # Lower learning rate for fine-grained activities
 lr_head: 0.0001  # Standard learning rate for classification head
 weight_decay: 0.01  # Weight decay for regularization
