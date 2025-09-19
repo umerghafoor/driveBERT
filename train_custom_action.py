@@ -28,6 +28,25 @@ from lib.data.dataset_action import NTURGBD
 from lib.data.dataset_custom import CustomActionDataset, VideoActionDataset
 from lib.model.model_action import ActionNet
 
+# Comet ML integration
+from comet_ml import start
+from comet_ml.integration.pytorch import log_model
+import subprocess
+
+# Start Comet ML experiment
+experiment = start(
+    api_key="OFmOeurqHyyi2aSzabZhxJz9Q",
+    project_name="drivebert",
+    workspace="umerghafoor"
+)
+
+# Log current git commit hash
+try:
+    commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('utf-8').strip()
+    experiment.log_other("git_commit", commit_hash)
+except Exception as e:
+    print(f"Could not log git commit: {e}")
+
 random.seed(0)
 np.random.seed(0)
 torch.manual_seed(0)
@@ -342,13 +361,23 @@ def train_with_config(args, opts):
             test_loss, test_top1, test_top5 = validate(test_loader, model, criterion, opts)
             
             # Log metrics
+            # Log metrics to TensorBoard
             train_writer.add_scalar('train_loss', losses_train.avg, epoch + 1)
             train_writer.add_scalar('train_top1', top1.avg, epoch + 1)
+            train_writer.add_scalar('test_loss', test_loss, epoch + 1)
+            train_writer.add_scalar('test_top1', test_top1, epoch + 1)
             if args.action_classes >= 5:
                 train_writer.add_scalar('train_top5', top5.avg, epoch + 1)
                 train_writer.add_scalar('test_top5', test_top5, epoch + 1)
-            train_writer.add_scalar('test_loss', test_loss, epoch + 1)
-            train_writer.add_scalar('test_top1', test_top1, epoch + 1)
+
+            # Log metrics to Comet ML for live graphs
+            experiment.log_metric('train_loss', losses_train.avg, step=epoch + 1)
+            experiment.log_metric('train_top1', top1.avg, step=epoch + 1)
+            experiment.log_metric('test_loss', test_loss, step=epoch + 1)
+            experiment.log_metric('test_top1', test_top1, step=epoch + 1)
+            if args.action_classes >= 5:
+                experiment.log_metric('train_top5', top5.avg, step=epoch + 1)
+                experiment.log_metric('test_top5', test_top5, step=epoch + 1)
             
             scheduler.step()
             
