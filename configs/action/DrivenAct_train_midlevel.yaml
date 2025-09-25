@@ -2,41 +2,41 @@
 # Optimized for driving behavior recognition with 39 midlevel activities
 
 # General  
-finetune: False  # Set to True to finetune from pretrained MotionBERT
-partial_train: null  # null or list of layers to freeze
+finetune: False
+partial_train: null
 
 # Training Parameters
-epochs: 200  # Reduced from 300 as DrivenAct is pre-segmented
-batch_size: 8  # Smaller batch size for detailed driving activities
-lr_backbone: 0.00005  # Lower learning rate for fine-grained activities
-lr_head: 0.0001  # Standard learning rate for classification head
-weight_decay: 0.01  # Weight decay for regularization
-lr_decay: 0.98  # Slightly more aggressive decay
+epochs: 200
+batch_size: 8
+lr_backbone: 0.00005
+lr_head: 0.0001
+weight_decay: 0.01
+lr_decay: 0.98
 
 # Model Architecture
-model_version: class  # Classification mode
-maxlen: 90  # DrivenAct uses 90-frame clips (3 seconds at 30fps)
-dim_feat: 512  # Feature dimension
-mlp_ratio: 2  # MLP expansion ratio
-depth: 5  # Transformer depth
-dim_rep: 512  # Representation dimension
-num_heads: 8  # Number of attention heads
-att_fuse: True  # Attention fusion
-num_joints: 17  # H36M format joints
-hidden_dim: 2048  # Hidden dimension for classification head
-dropout_ratio: 0.3  # Lower dropout for fine-grained activities
+model_version: class
+maxlen: 90
+dim_feat: 512
+mlp_ratio: 2
+depth: 5
+dim_rep: 512
+num_heads: 8
+att_fuse: True
+num_joints: 17
+hidden_dim: 2048
+dropout_ratio: 0.3
 
 # Dataset Configuration
-dataset: drivenact_inner_mirror_midlevel_split0  # Dataset name
-data_split: drivenact  # DrivenAct identifier (handled specially in training script)
-clip_len: 90  # Number of frames per clip (3 seconds at 30fps)
-action_classes: 39  # Number of activities in DrivenAct (updated from actual data)
+dataset: drivenact_inner_mirror_midlevel_split0
+data_split: drivenact
+clip_len: 90
+action_classes: 39
 
 # Data Augmentation (Conservative for driving activities)
-random_move: True  # Apply random motion augmentation
-scale_range_train: [1, 1.5]  # Conservative scaling for driving context
-scale_range_test: [1, 1]  # No scaling for testing
+random_move: True
+scale_range_train: [1, 1.5]
+scale_range_test: [1, 1]
 
 # DrivenAct specific settings
-camera_view: inner_mirror  # Camera view used
-annotation_level: midlevel  # midlevel, objectlevel, or tasklevel
+camera_view: inner_mirror
+annotation_level: midlevel
