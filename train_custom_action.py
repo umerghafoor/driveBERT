@@ -47,6 +47,9 @@ try:
 except Exception as e:
     print(f"Could not log git commit: {e}")
 
+random.seed(0)
+np.random.seed(0)
+torch.manual_seed(0)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -77,12 +80,6 @@ def parse_args():
     
     opts = parser.parse_args()
     return opts
-
-def _atomic_torch_save(state: dict, path: str):
-    """Safely save a checkpoint by writing to a temp file then renaming."""
-    tmp_path = path + ".tmp"
-    torch.save(state, tmp_path)
-    os.replace(tmp_path, path)
 
 def create_dataset(args, opts, data_split, is_train=True):
     """
@@ -177,7 +174,6 @@ def validate(test_loader, model, criterion, opts):
 
 def train_with_config(args, opts):
     print(args)
-    # Proceed without enforcing a manual seed; resume restores RNG from checkpoints when available
     
     # Create checkpoint directory
     try:
@@ -259,7 +255,6 @@ def train_with_config(args, opts):
     train_dataset = create_dataset(args, opts, data_split=train_split, is_train=True)
     val_dataset = create_dataset(args, opts, data_split=val_split, is_train=False)
     
-    # Create loaders with default randomness (no fixed seed)
     train_loader = DataLoader(train_dataset, **trainloader_params)
     test_loader = DataLoader(val_dataset, **testloader_params)
     
@@ -302,27 +297,6 @@ def train_with_config(args, opts):
                 print('WARNING: this checkpoint does not contain an optimizer state. The optimizer will be reinitialized.')
             if 'best_acc' in checkpoint and checkpoint['best_acc'] is not None:
                 best_acc = checkpoint['best_acc']
-            # Restore scheduler state if available; otherwise align epoch count
-            if 'scheduler' in checkpoint and checkpoint['scheduler'] is not None:
-                try:
-                    scheduler.load_state_dict(checkpoint['scheduler'])
-                except Exception as e:
-                    print(f'WARNING: Failed to load scheduler state ({e}). Falling back to last_epoch alignment.')
-                    scheduler.last_epoch = st - 1
-            else:
-                scheduler.last_epoch = st - 1
-            # Restore RNG states (optional but helps stable continuation)
-            try:
-                if 'rng_state' in checkpoint and checkpoint['rng_state'] is not None:
-                    torch.set_rng_state(checkpoint['rng_state'])
-                if torch.cuda.is_available() and 'cuda_rng_state' in checkpoint and checkpoint['cuda_rng_state'] is not None:
-                    torch.cuda.set_rng_state_all(checkpoint['cuda_rng_state'])
-                if 'numpy_rng_state' in checkpoint and checkpoint['numpy_rng_state'] is not None:
-                    np.random.set_state(checkpoint['numpy_rng_state'])
-                if 'python_rng_state' in checkpoint and checkpoint['python_rng_state'] is not None:
-                    random.setstate(checkpoint['python_rng_state'])
-            except Exception as e:
-                print(f'WARNING: Failed to restore RNG states: {e}')
         
         # Training loop
         for epoch in range(st, args.epochs):
@@ -410,18 +384,12 @@ def train_with_config(args, opts):
             # Save latest checkpoint
             chk_path = os.path.join(opts.checkpoint, 'latest_epoch.bin')
             print('Saving checkpoint to', chk_path)
-            _atomic_torch_save({
+            torch.save({
                 'epoch': epoch+1,
                 'lr': scheduler.get_last_lr(),
                 'optimizer': optimizer.state_dict(),
                 'model': model.state_dict(),
-                'best_acc': best_acc,
-                'scheduler': scheduler.state_dict(),
-                # Save RNG states for stable resumption
-                'rng_state': torch.get_rng_state(),
-                'cuda_rng_state': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
-                'numpy_rng_state': np.random.get_state(),
-                'python_rng_state': random.getstate(),
+                'best_acc': best_acc
             }, chk_path)
             
             # Save best checkpoint
@@ -429,17 +397,12 @@ def train_with_config(args, opts):
                 best_acc = test_top1
                 best_chk_path = os.path.join(opts.checkpoint, 'best_epoch.bin')
                 print(f"New best accuracy: {best_acc:.3f}, saving best checkpoint")
-                _atomic_torch_save({
+                torch.save({
                     'epoch': epoch+1,
                     'lr': scheduler.get_last_lr(),
                     'optimizer': optimizer.state_dict(),
                     'model': model.state_dict(),
-                    'best_acc': best_acc,
-                    'scheduler': scheduler.state_dict(),
-                    'rng_state': torch.get_rng_state(),
-                    'cuda_rng_state': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
-                    'numpy_rng_state': np.random.get_state(),
-                    'python_rng_state': random.getstate(),
+                    'best_acc': best_acc
                 }, best_chk_path)
 
     if opts.evaluate:
