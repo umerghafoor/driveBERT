@@ -31,6 +31,16 @@ class CustomActionDataset(ActionDataset):
         """
         super(CustomActionDataset, self).__init__(data_path, data_split, n_frames, random_move, scale_range)
         
+        # Ensure each sample has 'total_frames' key
+        if hasattr(self, 'samples'):
+            for sample in self.samples:
+                if 'total_frames' not in sample:
+                    if 'keypoint' in sample and isinstance(sample['keypoint'], (list, np.ndarray)):
+                        sample['total_frames'] = len(sample['keypoint'])
+                    elif 'frames' in sample and isinstance(sample['frames'], (list, np.ndarray)):
+                        sample['total_frames'] = len(sample['frames'])
+                    else:
+                        sample['total_frames'] = n_frames
         # Add custom preprocessing if needed
         self.preprocess_custom_data()
     
