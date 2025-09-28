@@ -135,6 +135,13 @@ class ActionDataset(Dataset):
             assert data_split in dataset['split'].keys()
             self.split = dataset['split'][data_split]
         annotations = dataset['annotations']
+        # Ensure each sample has 'total_frames' key
+        for sample in annotations:
+            if 'total_frames' not in sample:
+                if 'keypoint' in sample and isinstance(sample['keypoint'], np.ndarray):
+                    sample['total_frames'] = sample['keypoint'].shape[0]
+                else:
+                    sample['total_frames'] = n_frames
         self.random_move = random_move
         self.is_train = "train" in data_split or (check_split==False)
         if "oneshot" in data_split:
