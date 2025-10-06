@@ -10,3 +10,13 @@ roma
 ipdb
 pytorch-metric-learning                         # For one-shot action recognition
 smplx[all]                                      # For mesh recovery
+
+# Vision Transformer and CLIP dependencies
+transformers                                    # For ViT models
+torch-audio                                     # For CLIP
+ftfy                                           # For CLIP text processing  
+regex                                          # For CLIP text processing
+Pillow                                         # For image processing
+scikit-learn                                   # For evaluation metrics
+pandas                                         # For dataset handling
+git+https://github.com/openai/CLIP.git        # CLIP model
