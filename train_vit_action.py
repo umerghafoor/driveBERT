@@ -112,7 +112,6 @@ class DrivenActVisionDataset(Dataset):
         # Get video path
         video_path = os.path.join(
             self.dataset_root, self.video_dir_name,
-            f"vp{row['participant_id']}", 
             f"{row['file_id']}.mp4"
         )
         
